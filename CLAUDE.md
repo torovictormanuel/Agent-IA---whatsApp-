@@ -33,7 +33,7 @@ Cuando generes el agente, SIEMPRE usa estas tecnologías:
 |-----------|-----------|-------|
 | Runtime | Python 3.11+ | Verificar en Fase 1 |
 | Servidor | FastAPI + Uvicorn | Webhook handler genérico |
-| IA | Anthropic Claude API | Modelo: `claude-sonnet-4-6` |
+| IA | Anthropic Claude API | Modelo: `claude-sonnet-5` |
 | WhatsApp | Meta Cloud API / Twilio | El usuario elige durante el setup |
 | Base de datos | SQLite (local) / PostgreSQL (prod) | Via SQLAlchemy |
 | Variables | python-dotenv | NUNCA hardcodear keys |
@@ -51,7 +51,12 @@ sqlalchemy>=2.0.0
 pyyaml>=6.0.1
 aiosqlite>=0.19.0
 python-multipart>=0.0.6
+twilio>=9.0.0
 ```
+
+> **Nota:** `twilio` se usa SOLO para validar la firma de los webhooks entrantes
+> (`RequestValidator`), no para enviar mensajes (eso ya se hace por HTTP directo).
+> Si el proveedor elegido es Meta, esta dependencia igual se instala pero no se usa.
 
 ---
 
@@ -64,16 +69,17 @@ agentkit/
 ├── agent/
 │   ├── __init__.py        ← Package init
 │   ├── main.py            ← FastAPI app + webhook (provider-agnostic)
-│   ├── brain.py           ← Conexión Claude API + system prompt desde prompts.yaml
-│   ├── memory.py          ← SQLAlchemy + SQLite, historial por número de teléfono
-│   ├── tools.py           ← Herramientas específicas del negocio del usuario
+│   ├── brain.py           ← Motor genérico: Claude API + loop de tool-calling
+│   ├── memory.py          ← SQLAlchemy + SQLite: historial, idempotencia, y tablas propias del rubro
+│   ├── tools.py           ← TOOLS + EJECUTAR_TOOL — lo único que cambia por rubro
 │   └── providers/
 │       ├── __init__.py    ← Factory: obtener_proveedor() según .env
-│       ├── base.py        ← Clase abstracta ProveedorWhatsApp
+│       ├── base.py        ← Clase abstracta ProveedorWhatsApp (incl. validar_autenticidad)
 │       └── twilio.py      ← Adaptador del proveedor elegido (o meta.py)
 ├── config/
 │   ├── business.yaml      ← Datos del negocio (generado en entrevista)
-│   └── prompts.yaml       ← System prompt del agente (generado, poderoso y específico)
+│   ├── prompts.yaml       ← System prompt del agente (generado, poderoso y específico)
+│   └── propiedades.yaml   ← Solo si el rubro es inmobiliario (ver 3.7bis)
 ├── knowledge/             ← Archivos del negocio que sube el usuario
 │   └── .gitkeep
 ├── tests/
@@ -100,7 +106,7 @@ Memory (agent/memory.py) — recupera historial de esa conversación
     ↓
 Brain (agent/brain.py) — llama Claude API con: system prompt + historial + mensaje nuevo
     ↓
-Claude API (claude-sonnet-4-6) — genera respuesta inteligente
+Claude API (claude-sonnet-5) — genera respuesta inteligente, decide si llamar tools
     ↓
 Tools (agent/tools.py) — si necesita hacer algo (agendar, buscar, etc.)
     ↓
@@ -207,6 +213,19 @@ PREGUNTA 7: ¿Tienes archivos con información de tu negocio?
 
             Si SÍ → "Colócalos en la carpeta /knowledge y presiona Enter cuando estén listos"
                      Acepto: PDF, TXT, DOCX, CSV, imágenes, JSON, Markdown
+
+                     Si el negocio es una INMOBILIARIA y el archivo trae un listado
+                     de propiedades (CSV/XLSX/texto con zona, precio, tipo, etc.):
+                     conviértelo a config/propiedades.yaml siguiendo el formato de
+                     la sección 3.7bis. Si no tiene catálogo estructurado, pregunta
+                     cuántas propiedades quiere cargar y pide los datos de cada una.
+
+                     Si además sube un archivo de CONTEXTO DE MERCADO (terminología
+                     local, reglas legales, moneda, forma de medir superficie): es
+                     el caso más valioso de /knowledge para este rubro — incorpóralo
+                     completo al system_prompt y ajusta los nombres de campos de
+                     propiedades.yaml/tools.py a esa terminología (ver nota de
+                     "Adaptación por país" al final de la sección 3.7bis).
             Si NO → Continuamos con lo que me has contado
 
 PREGUNTA 8: ¿Tienes tu Anthropic API Key?
@@ -229,10 +248,12 @@ PREGUNTA 9: ¿Qué servicio de WhatsApp quieres usar para conectar tu agente?
 PREGUNTA 10: [Depende de la respuesta de PREGUNTA 9]
 
             Si eligió META CLOUD API:
-                Necesitamos 3 datos de tu app de Facebook:
+                Necesitamos 4 datos de tu app de Facebook:
                 1. Access Token (permanente)
                 2. Phone Number ID
                 3. Verify Token (puedes inventar uno, ej: "mi-agente-2024")
+                4. App Secret (necesario para validar que los mensajes vienen
+                   realmente de Meta y no de un tercero)
 
                 Si NO los tiene → Guiar paso a paso:
                     1. Ve a developers.facebook.com
@@ -241,6 +262,7 @@ PREGUNTA 10: [Depende de la respuesta de PREGUNTA 9]
                     4. En WhatsApp → API Setup, copia el Phone Number ID
                     5. Genera un token de acceso permanente
                     6. Elige un Verify Token (cualquier texto secreto que tú inventes)
+                    7. En Configuración de la app → Básica, copia el App Secret
 
             Si eligió TWILIO:
                 Necesitamos 3 datos de tu cuenta Twilio:
@@ -330,6 +352,17 @@ system_prompt: |
   - Si el cliente parece frustrado, muestra empatía antes de resolver
   - SIEMPRE termina los mensajes con una pregunta o call-to-action cuando sea apropiado
 
+  ## Reglas de uso de herramientas
+  [Solo incluir esta sección si tools.py define TOOLS con al menos una herramienta]
+  - Usa las herramientas disponibles para consultar datos reales — NUNCA inventes
+    resultados (propiedades, disponibilidad, precios) que deberían venir de una tool
+  - Si una tool no encuentra resultados, dilo con claridad en vez de sugerir algo que no existe
+  - No expongas al cliente detalles técnicos (nombres de función, JSON, errores crudos)
+  - [AGREGAR AQUÍ reglas específicas del rubro, ej. inmobiliaria:]
+  - Antes de agendar una visita, confirma zona/tipo/presupuesto con buscar_propiedades
+  - Usa registrar_lead en cuanto el cliente muestre interés concreto en una propiedad
+  - Usa escalar_a_asesor si el cliente quiere negociar precio o firmar
+
 fallback_message: "Disculpa, no entendí tu mensaje. ¿Podrías reformularlo?"
 error_message: "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo en unos minutos."
 ```
@@ -380,6 +413,16 @@ class ProveedorWhatsApp(ABC):
     async def validar_webhook(self, request: Request) -> dict | int | None:
         """Verificación GET del webhook (solo Meta la requiere). Retorna respuesta o None."""
         return None
+
+    async def validar_autenticidad(self, request: Request) -> bool:
+        """
+        Verifica que el POST del webhook realmente venga del proveedor
+        (no de un tercero que descubrió la URL). Cada proveedor firma
+        distinto, así que cada adaptador SOBREESCRIBE este método.
+        Por defecto retorna True — pero NUNCA debe quedarse así en
+        producción para Meta o Twilio, ambos firman sus webhooks.
+        """
+        return True
 ```
 
 **`agent/providers/__init__.py`** (siempre se genera):
@@ -420,6 +463,8 @@ def obtener_proveedor() -> ProveedorWhatsApp:
 # Generado por AgentKit
 
 import os
+import hmac
+import hashlib
 import logging
 import httpx
 from fastapi import Request
@@ -435,6 +480,7 @@ class ProveedorMeta(ProveedorWhatsApp):
         self.access_token = os.getenv("META_ACCESS_TOKEN")
         self.phone_number_id = os.getenv("META_PHONE_NUMBER_ID")
         self.verify_token = os.getenv("META_VERIFY_TOKEN", "agentkit-verify")
+        self.app_secret = os.getenv("META_APP_SECRET")
         self.api_version = "v21.0"
 
     async def validar_webhook(self, request: Request) -> dict | int | None:
@@ -447,6 +493,29 @@ class ProveedorMeta(ProveedorWhatsApp):
             # Meta espera el challenge como respuesta en texto plano
             return int(challenge)
         return None
+
+    async def validar_autenticidad(self, request: Request) -> bool:
+        """
+        Meta firma cada POST con X-Hub-Signature-256 (HMAC-SHA256 sobre
+        el body crudo, usando el App Secret de Meta como clave).
+        Sin META_APP_SECRET configurado, no podemos validar — se rechaza
+        por seguridad en vez de aceptar cualquier POST a ciegas.
+        """
+        if not self.app_secret:
+            logger.error("META_APP_SECRET no configurado — no se puede validar el webhook")
+            return False
+
+        firma_header = request.headers.get("X-Hub-Signature-256", "")
+        if not firma_header.startswith("sha256="):
+            return False
+
+        firma_recibida = firma_header.removeprefix("sha256=")
+        body = await request.body()
+        firma_calculada = hmac.new(
+            self.app_secret.encode("utf-8"), body, hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(firma_recibida, firma_calculada)
 
     async def parsear_webhook(self, request: Request) -> list[MensajeEntrante]:
         """Parsea el payload anidado de Meta Cloud API."""
@@ -499,6 +568,7 @@ import logging
 import base64
 import httpx
 from fastapi import Request
+from twilio.request_validator import RequestValidator
 from agent.providers.base import ProveedorWhatsApp, MensajeEntrante
 
 logger = logging.getLogger("agentkit")
@@ -511,6 +581,33 @@ class ProveedorTwilio(ProveedorWhatsApp):
         self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
         self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
         self.phone_number = os.getenv("TWILIO_PHONE_NUMBER")
+        self.validator = RequestValidator(self.auth_token) if self.auth_token else None
+
+    async def validar_autenticidad(self, request: Request) -> bool:
+        """
+        Twilio firma cada POST con el header X-Twilio-Signature, calculado
+        sobre la URL pública exacta del webhook + los parámetros del form.
+
+        IMPORTANTE detrás de un proxy (Railway, etc.): Twilio firma usando
+        la URL PÚBLICA https, pero request.url puede reportar http si el
+        proxy no reenvía el esquema. Por eso reconstruimos la URL con el
+        header X-Forwarded-Proto cuando está presente.
+        """
+        if not self.validator:
+            logger.error("TWILIO_AUTH_TOKEN no configurado — no se puede validar el webhook")
+            return False
+
+        firma = request.headers.get("X-Twilio-Signature", "")
+        if not firma:
+            return False
+
+        proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        url_publica = str(request.url).replace(request.url.scheme, proto, 1)
+
+        form = await request.form()
+        parametros = dict(form)
+
+        return self.validator.validate(url_publica, parametros, firma)
 
     async def parsear_webhook(self, request: Request) -> list[MensajeEntrante]:
         """Parsea el payload form-encoded de Twilio."""
@@ -568,7 +665,13 @@ from fastapi.responses import PlainTextResponse
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
-from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
+from agent.memory import (
+    inicializar_db,
+    guardar_mensaje,
+    obtener_historial,
+    mensaje_ya_procesado,
+    marcar_mensaje_procesado,
+)
 from agent.providers import obtener_proveedor
 
 load_dotenv()
@@ -623,6 +726,13 @@ async def webhook_handler(request: Request):
     Procesa el mensaje, genera respuesta con Claude y la envía de vuelta.
     """
     try:
+        # Verificar que el POST realmente venga del proveedor (firma HMAC).
+        # Sin esto, cualquiera que descubra la URL podría hacer que el
+        # agente gaste tokens de Claude respondiendo mensajes falsos.
+        if not await proveedor.validar_autenticidad(request):
+            logger.warning("Webhook rechazado: firma inválida o ausente")
+            raise HTTPException(status_code=403, detail="Firma inválida")
+
         # Parsear webhook — el proveedor normaliza el formato
         mensajes = await proveedor.parsear_webhook(request)
 
@@ -631,6 +741,14 @@ async def webhook_handler(request: Request):
             if msg.es_propio or not msg.texto:
                 continue
 
+            # Idempotencia: Meta y Twilio pueden reintentar la entrega del
+            # mismo webhook (timeouts, reintentos automáticos). Sin este
+            # chequeo, el mismo mensaje se procesaría y respondería 2+ veces.
+            if await mensaje_ya_procesado(msg.mensaje_id):
+                logger.info(f"Mensaje {msg.mensaje_id} ya procesado — se ignora reintento")
+                continue
+            await marcar_mensaje_procesado(msg.mensaje_id)
+
             logger.info(f"Mensaje de {msg.telefono}: {msg.texto}")
 
             # Obtener historial ANTES de guardar el mensaje actual
@@ -638,7 +756,7 @@ async def webhook_handler(request: Request):
             historial = await obtener_historial(msg.telefono)
 
             # Generar respuesta con Claude
-            respuesta = await generar_respuesta(msg.texto, historial)
+            respuesta = await generar_respuesta(msg.texto, historial, msg.telefono)
 
             # Guardar mensaje del usuario Y respuesta del agente en memoria
             await guardar_mensaje(msg.telefono, "user", msg.texto)
@@ -651,6 +769,9 @@ async def webhook_handler(request: Request):
 
         return {"status": "ok"}
 
+    except HTTPException:
+        # Re-lanzar tal cual (ej. 403 de firma inválida) — no convertirla en 500
+        raise
     except Exception as e:
         logger.error(f"Error en webhook: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -658,26 +779,38 @@ async def webhook_handler(request: Request):
 
 #### 3.5 — `agent/brain.py`
 
+Este archivo es el **motor genérico** — es el mismo para cualquier rubro y NO se
+reescribe por negocio. Lo único que cambia entre rubros es `agent/tools.py`
+(sección 3.7), que expone `TOOLS` (schemas) y `EJECUTAR_TOOL` (dispatcher).
+`brain.py` implementa un loop real de tool-calling: el modelo decide cuándo
+buscar información o ejecutar una acción, en vez de que el código intente
+adivinar la intención del usuario con reglas.
+
 ```python
-# agent/brain.py — Cerebro del agente: conexión con Claude API
+# agent/brain.py — Cerebro del agente: conexión con Claude API + tool calling
 # Generado por AgentKit
 
 """
-Lógica de IA del agente. Lee el system prompt de prompts.yaml
-y genera respuestas usando la API de Anthropic Claude.
+Lógica de IA del agente. Lee el system prompt de prompts.yaml, ofrece al
+modelo las herramientas definidas en tools.py (TOOLS/EJECUTAR_TOOL) y
+resuelve el loop de tool-calling hasta obtener una respuesta de texto final.
 """
 
 import os
+import json
 import yaml
 import logging
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 
+from agent.tools import TOOLS, EJECUTAR_TOOL
+
 load_dotenv()
 logger = logging.getLogger("agentkit")
 
-# Cliente de Anthropic
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+MODELO = "claude-sonnet-5"
+MAX_TURNOS_TOOL = 5  # límite de idas y vueltas modelo <-> herramientas por mensaje
 
 
 def cargar_config_prompts() -> dict:
@@ -708,48 +841,80 @@ def obtener_mensaje_fallback() -> str:
     return config.get("fallback_message", "Disculpa, no entendí tu mensaje. ¿Podrías reformularlo?")
 
 
-async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
+async def _ejecutar_tool(nombre: str, tool_input: dict, telefono: str) -> str:
     """
-    Genera una respuesta usando Claude API.
+    Ejecuta una función de tools.py y serializa el resultado para
+    devolvérselo al modelo como tool_result.
+
+    `telefono` se inyecta SIEMPRE como kwarg — el modelo nunca lo ve ni
+    lo puede inventar, así se evita que alguien le pida al agente actuar
+    sobre el número de teléfono de otra persona.
+    """
+    funcion = EJECUTAR_TOOL.get(nombre)
+    if not funcion:
+        return json.dumps({"error": f"Herramienta '{nombre}' no existe"})
+    try:
+        resultado = await funcion(telefono=telefono, **tool_input)
+        return json.dumps(resultado, ensure_ascii=False, default=str)
+    except Exception as e:
+        logger.error(f"Error ejecutando tool '{nombre}': {e}")
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str) -> str:
+    """
+    Genera una respuesta usando Claude API, resolviendo tool calls si el
+    modelo las solicita (buscar propiedades, agendar visitas, etc.).
 
     Args:
-        mensaje: El mensaje nuevo del usuario
-        historial: Lista de mensajes anteriores [{"role": "user/assistant", "content": "..."}]
+        mensaje: el mensaje nuevo del usuario
+        historial: mensajes previos [{"role": "user/assistant", "content": "..."}]
+        telefono: número del cliente — se inyecta a las tools, nunca lo maneja el modelo
 
     Returns:
-        La respuesta generada por Claude
+        La respuesta final en texto para enviar por WhatsApp
     """
-    # Si el mensaje es muy corto o vacío, usar fallback
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
     system_prompt = cargar_system_prompt()
-
-    # Construir mensajes para la API
-    mensajes = []
-    for msg in historial:
-        mensajes.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
-
-    # Agregar el mensaje actual
-    mensajes.append({
-        "role": "user",
-        "content": mensaje
-    })
+    mensajes = list(historial) + [{"role": "user", "content": mensaje}]
 
     try:
-        response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=mensajes
-        )
+        for _ in range(MAX_TURNOS_TOOL):
+            response = await client.messages.create(
+                model=MODELO,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=mensajes,
+                tools=TOOLS,
+            )
 
-        respuesta = response.content[0].text
-        logger.info(f"Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
-        return respuesta
+            if response.stop_reason != "tool_use":
+                bloques_texto = [b.text for b in response.content if b.type == "text"]
+                logger.info(f"Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
+                return "\n".join(bloques_texto) or obtener_mensaje_fallback()
+
+            # El modelo pidió usar una o más herramientas antes de responder
+            mensajes.append({"role": "assistant", "content": response.content})
+
+            resultados_tools = []
+            for bloque in response.content:
+                if bloque.type != "tool_use":
+                    continue
+                logger.info(f"Tool call: {bloque.name}({bloque.input})")
+                resultado = await _ejecutar_tool(bloque.name, bloque.input, telefono)
+                resultados_tools.append({
+                    "type": "tool_result",
+                    "tool_use_id": bloque.id,
+                    "content": resultado,
+                })
+
+            mensajes.append({"role": "user", "content": resultados_tools})
+
+        # Se agotaron los turnos de tool-calling sin llegar a una respuesta final
+        logger.warning("Límite de turnos de tool-calling alcanzado sin respuesta final")
+        return obtener_mensaje_error()
 
     except Exception as e:
         logger.error(f"Error Claude API: {e}")
@@ -802,10 +967,42 @@ class Mensaje(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class EventoWebhook(Base):
+    """
+    Registro de mensaje_id ya procesados. Meta y Twilio reintentan la
+    entrega del webhook si no reciben 200 a tiempo — sin esta tabla,
+    un reintento haría que el agente responda el mismo mensaje 2+ veces.
+    """
+    __tablename__ = "eventos_webhook"
+
+    mensaje_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    procesado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 async def inicializar_db():
     """Crea las tablas si no existen."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def mensaje_ya_procesado(mensaje_id: str) -> bool:
+    """Retorna True si este mensaje_id ya fue procesado antes (reintento del proveedor)."""
+    if not mensaje_id:
+        return False
+    async with async_session() as session:
+        result = await session.get(EventoWebhook, mensaje_id)
+        return result is not None
+
+
+async def marcar_mensaje_procesado(mensaje_id: str):
+    """Registra un mensaje_id como procesado. Idempotente: ignora si ya existe."""
+    if not mensaje_id:
+        return
+    async with async_session() as session:
+        existente = await session.get(EventoWebhook, mensaje_id)
+        if existente is None:
+            session.add(EventoWebhook(mensaje_id=mensaje_id))
+            await session.commit()
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
@@ -862,58 +1059,401 @@ async def limpiar_historial(telefono: str):
         await session.commit()
 ```
 
-#### 3.7 — `agent/tools.py`
+**Tablas específicas del rubro:** `Mensaje` y `EventoWebhook` son fijas — las usa
+`main.py` para cualquier negocio. Cuando el rubro necesita guardar datos propios
+(leads, visitas, pedidos, tickets...), Claude Code AGREGA las tablas y funciones
+correspondientes a este mismo archivo, siguiendo el mismo patrón (`Base`,
+`async_session()`, un `async def` por operación). No crear un archivo de
+persistencia aparte por rubro — `memory.py` sigue siendo el único dueño del acceso
+a datos.
 
-Genera herramientas ESPECÍFICAS según los casos de uso elegidos por el usuario.
-Usa este template base y agrega las funciones según el caso:
+**Ejemplo — rubro inmobiliario** (agrega esto a `memory.py` cuando el negocio es
+una inmobiliaria; `agent/tools.py` de la sección 3.7 depende de estas funciones):
 
 ```python
-# agent/tools.py — Herramientas del agente
+from sqlalchemy import Float
+
+
+class Lead(Base):
+    """Cliente interesado, registrado por el agente para seguimiento de ventas."""
+    __tablename__ = "leads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telefono: Mapped[str] = mapped_column(String(50), index=True)
+    nombre: Mapped[str] = mapped_column(String(200))
+    interes: Mapped[str] = mapped_column(Text)
+    presupuesto: Mapped[float | None] = mapped_column(Float, nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Visita(Base):
+    """Visita agendada a una propiedad."""
+    __tablename__ = "visitas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telefono: Mapped[str] = mapped_column(String(50), index=True)
+    id_propiedad: Mapped[str] = mapped_column(String(50))
+    fecha: Mapped[str] = mapped_column(String(20))   # YYYY-MM-DD
+    hora: Mapped[str] = mapped_column(String(10))    # HH:MM
+    estado: Mapped[str] = mapped_column(String(20), default="confirmada")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+async def registrar_lead(telefono: str, nombre: str, interes: str, presupuesto: float | None = None):
+    """Guarda un lead para que el equipo de ventas le dé seguimiento."""
+    async with async_session() as session:
+        session.add(Lead(telefono=telefono, nombre=nombre, interes=interes, presupuesto=presupuesto))
+        await session.commit()
+
+
+async def registrar_visita(telefono: str, id_propiedad: str, fecha: str, hora: str) -> int:
+    """Agenda una visita y retorna su ID."""
+    async with async_session() as session:
+        visita = Visita(telefono=telefono, id_propiedad=id_propiedad, fecha=fecha, hora=hora)
+        session.add(visita)
+        await session.commit()
+        await session.refresh(visita)
+        return visita.id
+
+
+async def listar_visitas(telefono: str) -> list[dict]:
+    """Lista las visitas agendadas por un cliente, ordenadas por fecha."""
+    async with async_session() as session:
+        query = (
+            select(Visita)
+            .where(Visita.telefono == telefono)
+            .order_by(Visita.fecha, Visita.hora)
+        )
+        result = await session.execute(query)
+        return [
+            {"id": v.id, "id_propiedad": v.id_propiedad, "fecha": v.fecha, "hora": v.hora, "estado": v.estado}
+            for v in result.scalars().all()
+        ]
+```
+
+---
+
+#### 3.7 — `agent/tools.py`
+
+`brain.py` (sección 3.5) es un motor genérico de tool-calling: no sabe nada de
+negocios, solo sabe llamar funciones. Lo único que define QUÉ puede hacer el
+agente es este archivo, a través de un contrato fijo de dos nombres que
+`brain.py` importa directo:
+
+- **`TOOLS`** — lista de schemas JSON (formato Anthropic tools) que se le pasan
+  al modelo. El modelo decide solo, en cada turno, si necesita llamar alguna.
+- **`EJECUTAR_TOOL`** — diccionario `{nombre_tool: función}` que `brain.py` usa
+  para despachar la llamada real cuando el modelo pide una tool.
+
+**Regla fija para cada función expuesta como tool:** siempre recibe `telefono`
+como primer kwarg (inyectado automáticamente por `brain.py`, el modelo nunca lo
+maneja ni lo puede falsificar), más los parámetros que decida el modelo según
+el `input_schema`. Siempre retorna un `dict` serializable a JSON — nunca texto
+libre — para que el modelo pueda interpretarlo de forma consistente.
+
+Adaptar AgentKit a un rubro nuevo significa reescribir SOLO este archivo (y, si
+hace falta persistencia propia, agregar tablas a `memory.py` como se explicó
+arriba). `brain.py`, `main.py`, `providers/` no cambian.
+
+##### Implementación de referencia — rubro inmobiliario
+
+```python
+# agent/tools.py — Herramientas del agente (rubro: inmobiliaria)
 # Generado por AgentKit
 
 """
-Herramientas específicas del negocio.
-Estas funciones extienden las capacidades del agente más allá de responder texto.
-Claude Code genera las funciones según los casos de uso elegidos en la entrevista.
+Herramientas expuestas al modelo como tools de la API de Claude.
+Trabajan sobre el catálogo de config/propiedades.yaml (sección 3.7bis)
+y sobre las tablas Lead/Visita de memory.py.
 """
 
-import os
 import yaml
 import logging
 from datetime import datetime
 
+from agent.memory import registrar_lead as _registrar_lead_db
+from agent.memory import registrar_visita as _registrar_visita_db
+from agent.memory import listar_visitas as _listar_visitas_db
+
 logger = logging.getLogger("agentkit")
 
 
-def cargar_info_negocio() -> dict:
-    """Carga la información del negocio desde business.yaml."""
+def _cargar_propiedades() -> list[dict]:
+    """Lee el catálogo de propiedades desde config/propiedades.yaml."""
     try:
-        with open("config/business.yaml", "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        with open("config/propiedades.yaml", "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+            return data.get("propiedades", [])
     except FileNotFoundError:
-        logger.error("config/business.yaml no encontrado")
-        return {}
+        logger.error("config/propiedades.yaml no encontrado")
+        return []
 
 
-def obtener_horario() -> dict:
-    """Retorna el horario de atención del negocio."""
-    info = cargar_info_negocio()
+async def buscar_propiedades(
+    telefono: str,
+    zona: str | None = None,
+    tipo: str | None = None,
+    operacion: str | None = None,
+    precio_min: float | None = None,
+    precio_max: float | None = None,
+    habitaciones_min: int | None = None,
+) -> dict:
+    """Filtra el catálogo según los criterios recibidos del modelo."""
+    resultados = []
+    for p in _cargar_propiedades():
+        if not p.get("disponible", True):
+            continue
+        if zona and zona.lower() not in p.get("zona", "").lower():
+            continue
+        if tipo and tipo.lower() != p.get("tipo", "").lower():
+            continue
+        if operacion and operacion.lower() != p.get("operacion", "").lower():
+            continue
+        if precio_min and p.get("precio", 0) < precio_min:
+            continue
+        if precio_max and p.get("precio", 0) > precio_max:
+            continue
+        if habitaciones_min and p.get("habitaciones", 0) < habitaciones_min:
+            continue
+        resultados.append(p)
+
+    # Limitamos resultados para no saturar el chat de WhatsApp
+    return {"total_encontradas": len(resultados), "propiedades": resultados[:5]}
+
+
+async def obtener_propiedad(telefono: str, id_propiedad: str) -> dict:
+    """Detalle completo de una propiedad por su ID."""
+    for p in _cargar_propiedades():
+        if p.get("id") == id_propiedad:
+            return p
+    return {"error": f"No existe una propiedad con id {id_propiedad}"}
+
+
+async def agendar_visita(telefono: str, id_propiedad: str, fecha: str, hora: str) -> dict:
+    """Agenda una visita presencial. fecha en YYYY-MM-DD, hora en HH:MM (24h)."""
+    propiedad = await obtener_propiedad(telefono, id_propiedad)
+    if "error" in propiedad:
+        return propiedad
+
+    try:
+        datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return {"error": "Formato de fecha/hora inválido. Usa YYYY-MM-DD y HH:MM"}
+
+    visita_id = await _registrar_visita_db(telefono, id_propiedad, fecha, hora)
     return {
-        "horario": info.get("negocio", {}).get("horario", "No disponible"),
-        "esta_abierto": True,  # TODO: calcular según hora actual y horario
+        "confirmado": True,
+        "visita_id": visita_id,
+        "propiedad": propiedad.get("zona"),
+        "fecha": fecha,
+        "hora": hora,
     }
 
 
-def buscar_en_knowledge(consulta: str) -> str:
-    """
-    Busca información relevante en los archivos de /knowledge.
-    Retorna el contenido más relevante encontrado.
-    """
+async def listar_mis_visitas(telefono: str) -> dict:
+    """Lista las visitas que este cliente ya tiene agendadas."""
+    return {"visitas": await _listar_visitas_db(telefono)}
+
+
+async def registrar_lead(telefono: str, nombre: str, interes: str, presupuesto: float | None = None) -> dict:
+    """Guarda los datos de contacto e interés del cliente para el equipo de ventas."""
+    await _registrar_lead_db(telefono, nombre, interes, presupuesto)
+    return {"registrado": True}
+
+
+async def escalar_a_asesor(telefono: str, motivo: str) -> dict:
+    """Deriva la conversación a un asesor humano (negociación, caso complejo, etc.)."""
+    logger.warning(f"ESCALAR A ASESOR — telefono={telefono} motivo={motivo}")
+    # TODO: conectar con el canal real del equipo (Slack, email, CRM, etc.)
+    return {"escalado": True, "mensaje": "Un asesor se pondrá en contacto contigo pronto."}
+
+
+# ════════════════════════════════════════════════════════════
+# Contrato con brain.py — schemas + dispatcher
+# ════════════════════════════════════════════════════════════
+
+TOOLS = [
+    {
+        "name": "buscar_propiedades",
+        "description": "Busca propiedades en el catálogo según zona, tipo, operación, precio o número de habitaciones. Úsala cuando el cliente pregunte por propiedades disponibles.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "zona": {"type": "string", "description": "Colonia, zona o ciudad, ej: 'Polanco'"},
+                "tipo": {"type": "string", "enum": ["departamento", "casa", "oficina", "terreno", "local"]},
+                "operacion": {"type": "string", "enum": ["venta", "renta"]},
+                "precio_min": {"type": "number"},
+                "precio_max": {"type": "number"},
+                "habitaciones_min": {"type": "integer"},
+            },
+        },
+    },
+    {
+        "name": "obtener_propiedad",
+        "description": "Obtiene el detalle completo de UNA propiedad específica por su ID (usa el ID que aparece en los resultados de buscar_propiedades).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id_propiedad": {"type": "string"}},
+            "required": ["id_propiedad"],
+        },
+    },
+    {
+        "name": "agendar_visita",
+        "description": "Agenda una visita presencial a una propiedad en una fecha y hora específicas.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id_propiedad": {"type": "string"},
+                "fecha": {"type": "string", "description": "Formato YYYY-MM-DD"},
+                "hora": {"type": "string", "description": "Formato HH:MM, 24 horas"},
+            },
+            "required": ["id_propiedad", "fecha", "hora"],
+        },
+    },
+    {
+        "name": "listar_mis_visitas",
+        "description": "Lista las visitas que este cliente ya tiene agendadas.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "registrar_lead",
+        "description": "Guarda los datos de contacto del cliente y qué está buscando, para que el equipo de ventas le dé seguimiento. Úsala en cuanto el cliente muestre interés real (no en el primer saludo).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {"type": "string"},
+                "interes": {"type": "string", "description": "Qué está buscando el cliente"},
+                "presupuesto": {"type": "number"},
+            },
+            "required": ["nombre", "interes"],
+        },
+    },
+    {
+        "name": "escalar_a_asesor",
+        "description": "Deriva la conversación a un asesor humano. Úsala cuando el cliente quiera negociar precio, firmar, o pida hablar con una persona.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"motivo": {"type": "string"}},
+            "required": ["motivo"],
+        },
+    },
+]
+
+EJECUTAR_TOOL = {
+    "buscar_propiedades": buscar_propiedades,
+    "obtener_propiedad": obtener_propiedad,
+    "agendar_visita": agendar_visita,
+    "listar_mis_visitas": listar_mis_visitas,
+    "registrar_lead": registrar_lead,
+    "escalar_a_asesor": escalar_a_asesor,
+}
+```
+
+##### 3.7bis — `config/propiedades.yaml` (solo rubro inmobiliario)
+
+Si el negocio es una inmobiliaria, Claude Code convierte el catálogo que el
+usuario puso en `/knowledge` (CSV, XLSX o texto con el listado de propiedades)
+a este formato estructurado — es lo que `buscar_propiedades()` consulta:
+
+```yaml
+# config/propiedades.yaml — Catálogo de propiedades
+# Generado por AgentKit a partir de los archivos en /knowledge
+propiedades:
+  - id: "P001"
+    tipo: "departamento"        # departamento | casa | oficina | terreno | local
+    operacion: "venta"          # venta | renta
+    zona: "Polanco, CDMX"
+    precio: 4500000
+    moneda: "MXN"
+    habitaciones: 2
+    banos: 2
+    m2: 85
+    estacionamientos: 1
+    descripcion: "Departamento remodelado, vista a parque, balcón."
+    amenidades: ["alberca", "gimnasio", "seguridad 24h"]
+    disponible: true
+
+  - id: "P002"
+    tipo: "casa"
+    operacion: "renta"
+    zona: "San Pedro Garza García, NL"
+    precio: 32000
+    moneda: "MXN"
+    habitaciones: 3
+    banos: 2.5
+    m2: 210
+    estacionamientos: 2
+    descripcion: "Casa en privada, jardín, cuarto de servicio."
+    amenidades: ["jardín", "cuarto de servicio", "casa club"]
+    disponible: true
+```
+
+Si el usuario no tiene un catálogo estructurado, Claude Code hace 2-3 preguntas
+extra durante la Fase 2 (cuántas propiedades, y pide los datos de cada una uno
+por uno) para armar este archivo manualmente.
+
+**Adaptación por país:** los campos y la terminología de arriba son un piso
+genérico (LatAm). El mercado inmobiliario cambia mucho por país — monedas,
+forma de medir superficie, cómo se cuentan los ambientes, qué gastos son
+habituales. Si el usuario sube un archivo de contexto de mercado a
+`/knowledge` (terminología local, reglas legales, dinámica de precios),
+Claude Code debe:
+1. Incorporarlo tal cual a `config/prompts.yaml`, en una sección propia
+   dentro del `system_prompt` (no resumirlo a la mitad — el detalle es lo
+   que hace que el agente hable como un asesor local real)
+2. Ajustar los NOMBRES DE CAMPOS de `propiedades.yaml` y los parámetros de
+   `buscar_propiedades` en `tools.py` a la terminología de ese país (ej.
+   Argentina: `ambientes` en vez de `habitaciones`, `operacion: alquiler`
+   en vez de `renta`, `m2_cubierta`/`m2_semicubierta`/`m2_descubierta` en
+   vez de un solo `m2`, campo `moneda` por USD/moneda local, `expensas`)
+
+Ver `examples/inmobiliaria/` en este repo para una instancia completa ya
+adaptada al mercado argentino (`knowledge/contexto_mercado_ar.md` +
+`config/prompts.yaml` + `config/propiedades.yaml` + `tools.py` consistentes
+entre sí) — úsala como plantilla al adaptar a otro país.
+
+##### Otros rubros
+
+Para cualquier otro caso de uso, sigue el mismo contrato (`TOOLS` +
+`EJECUTAR_TOOL`) con funciones propias. Ejemplos de qué tools tendría cada uno:
+
+```python
+# Si TOMAR PEDIDOS:
+#   agregar_al_carrito(telefono, producto, cantidad)
+#   ver_carrito(telefono)
+#   confirmar_pedido(telefono)
+#
+# Si SOPORTE:
+#   crear_ticket(telefono, problema)
+#   consultar_ticket(telefono, ticket_id)
+#   escalar_ticket(telefono, ticket_id, razon)
+#
+# Si FAQ simple (sin acciones):
+#   buscar_en_knowledge(telefono, consulta) — búsqueda sobre /knowledge
+```
+
+##### Piso mínimo — FAQ sin acciones (si el negocio no necesita tools)
+
+Para un negocio que solo responde preguntas (sin agendar, sin pedidos, sin
+leads), `TOOLS` puede quedar vacío o con una sola tool de búsqueda:
+
+```python
+# agent/tools.py — Herramientas del agente (FAQ simple)
+# Generado por AgentKit
+
+import os
+import logging
+
+logger = logging.getLogger("agentkit")
+
+
+async def buscar_en_knowledge(telefono: str, consulta: str) -> dict:
+    """Busca coincidencias de texto en los archivos de /knowledge."""
     resultados = []
     knowledge_dir = "knowledge"
 
     if not os.path.exists(knowledge_dir):
-        return "No hay archivos de conocimiento disponibles."
+        return {"resultados": [], "mensaje": "No hay archivos de conocimiento disponibles."}
 
     for archivo in os.listdir(knowledge_dir):
         ruta = os.path.join(knowledge_dir, archivo)
@@ -922,44 +1462,35 @@ def buscar_en_knowledge(consulta: str) -> str:
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 contenido = f.read()
-                # Búsqueda simple por coincidencia de texto
                 if consulta.lower() in contenido.lower():
-                    resultados.append(f"[{archivo}]: {contenido[:500]}")
+                    resultados.append({"archivo": archivo, "extracto": contenido[:500]})
         except (UnicodeDecodeError, IOError):
             continue
 
-    if resultados:
-        return "\n---\n".join(resultados)
-    return "No encontré información específica sobre eso en mis archivos."
+    return {"resultados": resultados}
 
 
-# ════════════════════════════════════════════════════════════
-# Claude Code: agrega aquí las funciones específicas según
-# el caso de uso elegido por el usuario. Ejemplos:
-#
-# Si FAQ → buscar_en_knowledge() ya está listo arriba
-#
-# Si AGENDAR CITAS:
-# def obtener_slots_disponibles(fecha: str) -> list[dict]: ...
-# def reservar_cita(telefono, fecha, hora, servicio): ...
-# def cancelar_cita(telefono, cita_id): ...
-#
-# Si TOMAR PEDIDOS:
-# def agregar_al_carrito(telefono, producto, cantidad): ...
-# def ver_carrito(telefono) -> list[dict]: ...
-# def confirmar_pedido(telefono) -> dict: ...
-#
-# Si VENTAS / LEADS:
-# def registrar_lead(telefono, nombre, interes): ...
-# def calificar_lead(telefono) -> str: ...
-# def escalar_a_vendedor(telefono, contexto): ...
-#
-# Si SOPORTE:
-# def crear_ticket(telefono, problema) -> str: ...
-# def consultar_ticket(ticket_id) -> dict: ...
-# def escalar_ticket(ticket_id, razon): ...
-# ════════════════════════════════════════════════════════════
+TOOLS = [
+    {
+        "name": "buscar_en_knowledge",
+        "description": "Busca información específica en los documentos del negocio (menú, precios, políticas, FAQ).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"consulta": {"type": "string"}},
+            "required": ["consulta"],
+        },
+    },
+]
+
+EJECUTAR_TOOL = {
+    "buscar_en_knowledge": buscar_en_knowledge,
+}
 ```
+
+> Nota: para catálogos de conocimiento grandes (varios PDFs, +50 páginas), esta
+> búsqueda por substring se queda corta. Si el volumen lo justifica, reemplázala
+> por una búsqueda semántica (embeddings) manteniendo el mismo contrato
+> `async def buscar_en_knowledge(telefono, consulta) -> dict`.
 
 Siempre incluir un archivo `agent/__init__.py` vacío.
 
@@ -1028,7 +1559,7 @@ async def main():
 
         # Generar respuesta
         print("\nAgente: ", end="", flush=True)
-        respuesta = await generar_respuesta(mensaje, historial)
+        respuesta = await generar_respuesta(mensaje, historial, TELEFONO_TEST)
         print(respuesta)
         print()
 
@@ -1061,6 +1592,7 @@ WHATSAPP_PROVIDER=  # meta | twilio
 # META_ACCESS_TOKEN=...
 # META_PHONE_NUMBER_ID=...
 # META_VERIFY_TOKEN=agentkit-verify
+# META_APP_SECRET=...          # Requerido para validar la firma del webhook
 
 # --- Si WHATSAPP_PROVIDER=twilio ---
 # TWILIO_ACCOUNT_SID=...
@@ -1220,7 +1752,7 @@ Solo ejecutar si el usuario confirma que quiere hacer deploy.
       - DATABASE_URL = [Railway te da una si agregas PostgreSQL]
       - [Variables del proveedor elegido — ver abajo]
 
-      Si META:     META_ACCESS_TOKEN, META_PHONE_NUMBER_ID, META_VERIFY_TOKEN
+      Si META:     META_ACCESS_TOKEN, META_PHONE_NUMBER_ID, META_VERIFY_TOKEN, META_APP_SECRET
       Si TWILIO:   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
 
    Paso 4: Configura el webhook
@@ -1250,7 +1782,7 @@ Solo ejecutar si el usuario confirma que quiere hacer deploy.
 
    Lo que se construyó:
    - Servidor FastAPI con webhook de WhatsApp
-   - Cerebro con Claude AI (claude-sonnet-4-6)
+   - Cerebro con Claude AI (claude-sonnet-5) con tool-calling
    - Memoria de conversaciones por cliente
    - Herramientas: [LISTA DE HERRAMIENTAS]
    - System prompt personalizado para tu negocio
@@ -1323,6 +1855,7 @@ WHATSAPP_PROVIDER=
 # META_ACCESS_TOKEN=...
 # META_PHONE_NUMBER_ID=...
 # META_VERIFY_TOKEN=agentkit-verify
+# META_APP_SECRET=...
 
 # Twilio (si WHATSAPP_PROVIDER=twilio)
 # TWILIO_ACCOUNT_SID=...

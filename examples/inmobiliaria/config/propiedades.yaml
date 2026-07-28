@@ -1,0 +1,121 @@
+# config/propiedades.yaml — Catálogo de propiedades (datos de ejemplo, mercado AR)
+#
+# Convenciones del mercado argentino (ver knowledge/contexto_mercado_ar.md):
+#   - ambientes: 2 ambientes = 1 dormitorio + living/comedor (cocina y baño no cuentan)
+#   - m2_cubierta / m2_semicubierta / m2_descubierta en vez de un solo "m2"
+#   - moneda: ventas casi siempre en USD, alquileres mixtos ARS/USD
+#   - expensas: gasto mensual aparte del precio (ordinarias, a cargo del inquilino)
+#   - operacion: "venta" | "alquiler"
+
+propiedades:
+  - id: "P001"
+    tipo: "departamento"
+    operacion: "venta"
+    zona: "Palermo, CABA"
+    precio: 185000
+    moneda: "USD"
+    ambientes: 3
+    dormitorios: 2
+    banos: 2
+    m2_cubierta: 75
+    m2_semicubierta: 8
+    m2_descubierta: 0
+    expensas: null
+    estacionamientos: 1
+    descripcion: "Departamento a estrenar, luminoso, balcón aterrazado, cochera fija."
+    amenidades: ["laundry", "sum", "seguridad 24h"]
+    disponible: true
+
+  - id: "P002"
+    tipo: "PH"
+    operacion: "alquiler"
+    zona: "Villa Crespo, CABA"
+    precio: 380000
+    moneda: "ARS"
+    ajuste_indice: "ICL"
+    ajuste_periodicidad: "cuatrimestral"
+    ambientes: 3
+    dormitorios: 2
+    banos: 1
+    m2_cubierta: 90
+    m2_semicubierta: 0
+    m2_descubierta: 20
+    expensas: 15000
+    estacionamientos: 0
+    descripcion: "PH de dos plantas, patio propio, reciclado a nuevo, sin expensas de edificio."
+    amenidades: ["patio propio", "parrilla"]
+    disponible: true
+
+  - id: "P003"
+    tipo: "oficina"
+    operacion: "alquiler"
+    zona: "Puerto Madero, CABA"
+    precio: 2800
+    moneda: "USD"
+    ambientes: 0
+    dormitorios: 0
+    banos: 2
+    m2_cubierta: 150
+    m2_semicubierta: 0
+    m2_descubierta: 0
+    expensas: 45000
+    estacionamientos: 4
+    descripcion: "Piso completo en torre corporativa clase A, vista al río."
+    amenidades: ["recepción", "seguridad 24h", "cocheras de visitas"]
+    disponible: true
+
+  - id: "P004"
+    tipo: "monoambiente"
+    operacion: "alquiler"
+    zona: "Recoleta, CABA"
+    precio: 550
+    moneda: "USD"
+    ambientes: 1
+    dormitorios: 0
+    banos: 1
+    m2_cubierta: 32
+    m2_semicubierta: 0
+    m2_descubierta: 0
+    expensas: 12000
+    estacionamientos: 0
+    descripcion: "Monoambiente amueblado, ideal profesional o estudiante, apto turístico."
+    amenidades: ["amueblado", "portero"]
+    disponible: true
+
+  - id: "P005"
+    tipo: "casa"
+    operacion: "venta"
+    zona: "Nordelta, GBA Norte"
+    precio: 420000
+    moneda: "USD"
+    ambientes: 5
+    dormitorios: 4
+    banos: 3
+    m2_cubierta: 280
+    m2_semicubierta: 40
+    m2_descubierta: 600
+    expensas: 95000
+    estacionamientos: 3
+    descripcion: "Casa en barrio cerrado, pileta, quincho, lote de esquina."
+    amenidades: ["pileta", "quincho", "seguridad perimetral"]
+    disponible: true
+
+  - id: "P006"
+    tipo: "local"
+    operacion: "alquiler"
+    zona: "Flores, CABA"
+    precio: 320000
+    moneda: "ARS"
+    ajuste_indice: "IPC"
+    ajuste_periodicidad: "trimestral"
+    ambientes: 0
+    dormitorios: 0
+    banos: 1
+    m2_cubierta: 60
+    m2_semicubierta: 0
+    m2_descubierta: 0
+    expensas: 20000
+    estacionamientos: 0
+    descripcion: "Local a la calle, esquina, alto tránsito peatonal, apto rubro gastronómico."
+    amenidades: ["esquina", "vidriera a la calle"]
+    disponible: false

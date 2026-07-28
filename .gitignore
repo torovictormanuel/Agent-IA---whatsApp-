@@ -22,12 +22,13 @@ knowledge/*
 !knowledge/.gitkeep
 
 # Archivos generados por Claude Code durante onboarding
-agent/
-config/
-tests/
-requirements.txt
-Dockerfile
-docker-compose.yml
+# (anclados a la raíz con "/" para NO excluir examples/*/agent, examples/*/config, etc.)
+/agent/
+/config/
+/tests/
+/requirements.txt
+/Dockerfile
+/docker-compose.yml
 
 # Session state
 config/session.yaml
