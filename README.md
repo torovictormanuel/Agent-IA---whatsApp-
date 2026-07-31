@@ -72,7 +72,7 @@ tu-proyecto/
 │   └── providers/             Conexion con tu servicio de WhatsApp
 │       ├── base.py            Interfaz comun
 │       ├── __init__.py        Selecciona el proveedor automaticamente
-│       └── twilio.py          Adaptador (o meta.py)
+│       └── meta.py            Adaptador (o twilio.py)
 │
 ├── config/                    ← CONFIGURACION
 │   ├── business.yaml          Datos de tu negocio
@@ -247,7 +247,7 @@ AgentKit soporta 2 proveedores. Tu eliges cual usar durante el setup.
 |-----------------|-------------------|---------|
 | **Restaurante** | Responde sobre menu, horarios, ubicacion | "El platillo del dia es..." |
 | **Clinica/Salon** | Agenda citas y reservaciones | "Tu cita quedo para el martes a las 3pm" |
-| **Inmobiliaria** | Califica leads y envia info de propiedades | "Tenemos 3 departamentos en tu rango..." |
+| **Inmobiliaria** ([ejemplo completo](examples/inmobiliaria/)) | Busca propiedades, agenda visitas, califica leads | "Tenemos 3 departamentos en tu rango..." |
 | **Tienda online** | Toma pedidos por WhatsApp | "Tu pedido de 2 pasteles quedo confirmado" |
 | **SaaS/Software** | Soporte tecnico post-venta | "Para resetear tu contrasena, sigue estos pasos..." |
 | **Cualquier negocio** | Responde preguntas frecuentes 24/7 | "Nuestro horario es..." |
@@ -287,7 +287,7 @@ claude "Agregamos un nuevo servicio de delivery. Actualiza el agente."
 claude "Quiero que el agente pueda consultar disponibilidad de citas."
 
 # Cambiar de proveedor de WhatsApp
-claude "Quiero migrar de Twilio a Meta Cloud API."
+claude "Quiero migrar de Meta a Twilio."
 ```
 
 ---
@@ -387,7 +387,7 @@ cuando el numero de clientes crece y actualizar N deploys deja de ser
 manejable.
 
 **Puedo cambiar de proveedor de WhatsApp despues?**
-Si. Abre Claude Code y dile: "Quiero cambiar de Twilio a Meta Cloud API."
+Si. Abre Claude Code y dile: "Quiero cambiar de Meta a Twilio" (o al reves).
 El regenerara los archivos necesarios.
 
 ---
