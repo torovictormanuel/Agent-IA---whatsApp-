@@ -6,8 +6,14 @@ completa de `/build-agent`, y como plantilla para adaptar a otro rubro.
 
 ## Qué incluye
 
-- Búsqueda de propiedades por zona, tipo, operación, precio y habitaciones
-  (`agent/tools.py` + `config/propiedades.yaml`, 6 propiedades de ejemplo)
+- Adaptado al **mercado inmobiliario argentino**: terminología (PH, ambientes,
+  m² cubierta/semicubierta/descubierta), moneda dual USD/ARS, expensas, y
+  reglas legales post-DNU 70/2023 — ver `knowledge/contexto_mercado_ar.md`,
+  incorporado completo al system prompt en `config/prompts.yaml`
+- Búsqueda de propiedades por zona, tipo, operación, moneda, precio y
+  ambientes (`agent/tools.py` + `config/propiedades.yaml`, 6 propiedades
+  de ejemplo en CABA/GBA: Palermo, Villa Crespo, Puerto Madero, Recoleta,
+  Nordelta, Flores)
 - Agenda de visitas y consulta de visitas propias
 - Registro de leads para el equipo de ventas
 - Escalamiento a un asesor humano
@@ -15,6 +21,8 @@ completa de `/build-agent`, y como plantilla para adaptar a otro rubro.
   (`agent/brain.py`)
 - Validación de firma de webhook para Twilio y Meta
 - Idempotencia: reintentos del proveedor no duplican respuestas
+- Modelo configurable via `ANTHROPIC_MODEL` (Haiku para probar sin quemar
+  crédito, Sonnet para producción — ver `.env.example`)
 
 ## Probar en 3 pasos (sin WhatsApp)
 
@@ -30,10 +38,10 @@ python tests/test_local.py
 Prueba escribiendo cosas como:
 
 ```
-Busco un departamento en renta en Condesa
-Cuanto cuesta la P002?
+Busco un depto en alquiler en Villa Crespo
+Cuanto sale la P001?
 Quiero agendar una visita a P001 el 2026-08-10 a las 16:00
-Me interesa, me llamo Ana y ando buscando algo en Polanco hasta 5 millones
+Me interesa, me llamo Ana y ando buscando algo en Palermo hasta 200 mil dolares
 Quiero hablar con alguien para negociar el precio
 ```
 
@@ -52,3 +60,12 @@ Solo se reescribe `agent/tools.py` (y, si hace falta persistencia propia, se
 agregan tablas a `agent/memory.py`). `agent/brain.py`, `agent/main.py` y
 `agent/providers/` no cambian — son el motor genérico. Ver `CLAUDE.md` en la
 raíz del repo, sección 3.7, para el contrato `TOOLS` / `EJECUTAR_TOOL`.
+
+## ¿Vas a atender a varios clientes con esto?
+
+Este ejemplo es single-tenant: un deploy, una base de datos, un negocio. Es
+lo correcto mientras manejás pocos clientes. Si el plan es vender esto a
+varias inmobiliarias/negocios desde una sola infraestructura, mirá
+[`examples/saas-multitenant/`](../saas-multitenant/) — la misma lógica de
+este ejemplo, pero servida desde un único servidor con `negocio_id` aislando
+los datos de cada cliente.

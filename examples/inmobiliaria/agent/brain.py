@@ -23,7 +23,11 @@ load_dotenv()
 logger = logging.getLogger("agentkit")
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODELO = "claude-sonnet-5"
+
+# Configurable para no quemar crédito de producción durante desarrollo:
+# en local/testing conviene ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+# (mucho más barato) y reservar Sonnet para tráfico real de clientes.
+MODELO = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 MAX_TURNOS_TOOL = 5  # límite de idas y vueltas modelo <-> herramientas por mensaje
 
 

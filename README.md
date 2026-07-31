@@ -25,8 +25,8 @@ Tu solo respondes preguntas sobre tu negocio. Claude Code se encarga de:
 ### Paso 1: Tu clonas el repo y corres un comando
 
 ```bash
-git clone https://github.com/Hainrixz/whatsapp-agentkit.git
-cd whatsapp-agentkit
+git clone https://github.com/torovictormanuel/Agent-IA---whatsApp-.git
+cd Agent-IA---whatsApp-
 bash start.sh
 ```
 
@@ -159,6 +159,8 @@ El cliente recibe la respuesta en segundos
 - Cada cliente tiene su propio historial. Si alguien habla contigo y vuelve al dia siguiente, el agente recuerda la conversacion anterior.
 - El agente NUNCA inventa informacion. Solo responde con lo que tu le diste.
 - Si no sabe algo, responde: "No tengo esa informacion, dejame conectarte con alguien del equipo."
+- El webhook valida la firma de Meta/Twilio antes de procesar cualquier mensaje (nadie mas puede hacerle hablar a tu agente gastando tu credito de Claude), y tiene idempotencia: si el proveedor reintenta la entrega de un mensaje, no lo responde dos veces.
+- El agente puede usar herramientas reales (tool-calling): buscar informacion, agendar, registrar datos — no solo generar texto.
 
 ---
 
@@ -192,9 +194,11 @@ claude
 | Proveedor | Dificultad | Costo | Mejor para |
 |-----------|-----------|-------|------------|
 | [Twilio](https://twilio.com) | Media | Sandbox gratis / Pago por mensaje | Empezar rapido, probar, empresas |
-| [Meta Cloud API](https://developers.facebook.com) | Media | Gratis por conversacion | Produccion seria |
+| [Meta Cloud API](https://developers.facebook.com) | Media | Gratis (ver nota) | Produccion seria |
 
-**Si solo quieres probar rapido**, Twilio tiene sandbox gratis y no requiere verificacion. Para produccion seria, considera Meta Cloud API.
+**Si solo quieres probar rapido**, Twilio tiene sandbox gratis y no requiere verificacion.
+
+**Para produccion, Meta Cloud API directo es mas barato que Twilio:** desde 2025, las conversaciones iniciadas por el cliente (que es el 100% del trafico de un bot que solo responde, nunca manda marketing) son **gratis e ilimitadas** en Meta. Twilio cobra un markup por mensaje encima de eso aunque la conversacion de base sea gratis.
 
 ---
 
@@ -202,8 +206,8 @@ claude
 
 ```bash
 # 1. Clona el repositorio
-git clone https://github.com/Hainrixz/whatsapp-agentkit.git
-cd whatsapp-agentkit
+git clone https://github.com/torovictormanuel/Agent-IA---whatsApp-.git
+cd Agent-IA---whatsApp-
 
 # 2. Verifica tu entorno
 bash start.sh
@@ -294,7 +298,7 @@ Para los curiosos, esto es lo que se usa por debajo:
 
 | Componente | Tecnologia | Para que sirve |
 |-----------|-----------|----------------|
-| IA | Claude AI (claude-sonnet-4-6) | Genera las respuestas inteligentes |
+| IA | Claude AI (claude-sonnet-5, configurable via `ANTHROPIC_MODEL`) | Genera las respuestas inteligentes, con tool-calling real |
 | Servidor | FastAPI + Uvicorn | Recibe los webhooks de WhatsApp |
 | WhatsApp | Meta / Twilio | Conecta con WhatsApp (tu eliges) |
 | Base de datos | SQLite (local) / PostgreSQL (prod) | Guarda historial de conversaciones |
@@ -328,6 +332,34 @@ importa cual estas usando. Solo llama `proveedor.parsear_webhook()` y
 
 ---
 
+## Ejemplos completos, listos para correr
+
+Ademas del flujo `/build-agent` (que genera un agente desde cero segun tus
+respuestas), este repo trae dos implementaciones de referencia completas y
+probadas — utiles tanto para probar el sistema ya mismo como para usarlas de
+plantilla:
+
+### [`examples/inmobiliaria/`](examples/inmobiliaria/) — single-tenant
+
+Un agente completo para el rubro inmobiliario, adaptado al mercado argentino
+(terminologia, moneda USD/ARS, aspectos legales). Busca propiedades, agenda
+visitas, registra leads. Un deploy = un negocio — el modelo correcto mientras
+manejas pocos clientes.
+
+### [`examples/saas-multitenant/`](examples/saas-multitenant/) — multi-tenant
+
+La misma logica de negocio, pero pensada para atender **muchos clientes desde
+un solo servidor y una sola base de datos** en vez de un deploy por cliente.
+Cada negocio tiene su propia URL de webhook (`/webhook/{negocio_id}`) y sus
+datos quedan aislados por fila, no por infraestructura separada. Trae ademas
+soporte listo para deployar gratis en Vercel + Neon.
+
+Los dos ejemplos comparten el mismo motor de seguridad: validacion de firma
+de webhook (nadie mas puede hacerle hablar a tu agente) e idempotencia
+(los reintentos del proveedor no duplican respuestas).
+
+---
+
 ## Preguntas frecuentes
 
 **Necesito saber programar?**
@@ -335,9 +367,9 @@ No. Claude Code escribe todo el codigo por ti. Tu solo respondes preguntas.
 
 **Cuanto cuesta?**
 - AgentKit es gratis y open source
-- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot)
-- WhatsApp: depende del proveedor (Twilio tiene sandbox gratis para probar)
-- Railway: plan gratis disponible para proyectos pequenos
+- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot). Sin tier gratis de produccion, pero hay $5 de credito de bienvenida y, si es un proyecto real, el [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms) da creditos (no toma equity)
+- WhatsApp: con Meta Cloud API directo, las conversaciones iniciadas por el cliente son gratis e ilimitadas — puede ser $0. Twilio tiene sandbox gratis para probar, pero cobra por mensaje en produccion
+- Hosting: Railway ya no tiene tier gratis real. Alternativas gratis: Vercel (Hobby, solo uso no comercial), Koyeb o Render — ver `examples/saas-multitenant/README.md` para el detalle
 
 **Puedo usar esto con mi negocio real?**
 Si. Despues de las pruebas locales, lo subes a Railway y cualquier cliente
@@ -348,7 +380,11 @@ Responde algo como: "No tengo esa informacion, dejame conectarte con alguien
 de nuestro equipo." Nunca inventa datos.
 
 **Puedo tener multiples agentes?**
-Si. Clona el repo varias veces, uno por negocio. Cada agente es independiente.
+Si, dos formas: clonar el repo varias veces (un negocio por deploy, simple
+mientras son pocos clientes), o usar `examples/saas-multitenant/` para
+atender a todos desde un solo servidor y una sola base de datos — mejor
+cuando el numero de clientes crece y actualizar N deploys deja de ser
+manejable.
 
 **Puedo cambiar de proveedor de WhatsApp despues?**
 Si. Abre Claude Code y dile: "Quiero cambiar de Twilio a Meta Cloud API."
@@ -358,7 +394,12 @@ El regenerara los archivos necesarios.
 
 ## Creditos
 
-Creado por **Todo de IA** — [@soyenriquerocha](https://instagram.com/soyenriquerocha)
+Proyecto original creado por **Todo de IA** — [@soyenriquerocha](https://instagram.com/soyenriquerocha).
+
+Este fork agrega: validacion de firma de webhooks, idempotencia,
+tool-calling real, y las implementaciones completas de referencia en
+`examples/` (single-tenant inmobiliaria adaptada a Argentina, y el modo
+SaaS multi-tenant).
 
 Construido con [Claude Code](https://claude.ai/claude-code) para builders de LATAM.
 

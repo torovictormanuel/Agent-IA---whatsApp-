@@ -809,7 +809,11 @@ load_dotenv()
 logger = logging.getLogger("agentkit")
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODELO = "claude-sonnet-5"
+
+# Configurable para no quemar crédito de producción durante desarrollo:
+# en local/testing conviene ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+# (mucho más barato) y reservar Sonnet para tráfico real de clientes.
+MODELO = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 MAX_TURNOS_TOOL = 5  # límite de idas y vueltas modelo <-> herramientas por mensaje
 
 
@@ -1584,6 +1588,9 @@ Claude Code genera SOLO las variables del proveedor elegido (no las de los otros
 
 # Anthropic API
 ANTHROPIC_API_KEY=sk-ant-...
+# Modelo: claude-sonnet-5 en producción, claude-haiku-4-5-20251001 en
+# desarrollo/testing para no quemar crédito mientras se itera
+ANTHROPIC_MODEL=claude-sonnet-5
 
 # Proveedor de WhatsApp
 WHATSAPP_PROVIDER=  # meta | twilio
@@ -1847,6 +1854,7 @@ pip install -r requirements.txt
 ```env
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-5  # claude-haiku-4-5-20251001 en dev/testing
 
 # Proveedor de WhatsApp (meta | twilio)
 WHATSAPP_PROVIDER=
@@ -1870,3 +1878,28 @@ ENVIRONMENT=development  # development | production
 DATABASE_URL=sqlite+aiosqlite:///./agentkit.db  # local
 # DATABASE_URL=postgresql+asyncpg://...          # producción Railway
 ```
+
+---
+
+## 8. Modo SaaS multi-tenant (opcional)
+
+Todo lo anterior describe el modo **single-tenant**: un clon de este repo,
+un deploy, una base de datos, un negocio. Es el modelo correcto mientras
+manejás pocos clientes (hasta ~10) — cada uno queda completamente aislado
+y no hay riesgo de que un bug afecte a otro.
+
+Cuando el número de clientes crece y actualizar código significa tocar
+N repos y N deploys de Railway, conviene migrar a un servidor
+**multi-tenant**: un solo proceso, una sola base de datos, cada negocio
+identificado por una fila (`negocio_id`) y una URL de webhook propia
+(`/webhook/{negocio_id}`). La lógica de negocio (`tools.py` por rubro) es
+prácticamente la misma — lo que cambia es que las funciones reciben
+`negocio_id` además de `telefono`, y que `business.yaml`/`prompts.yaml`/
+`propiedades.yaml` pasan de ser archivos a ser filas de una tabla.
+
+Ver `examples/saas-multitenant/` en este repo para la implementación de
+referencia completa (motor genérico + vertical inmobiliaria migrada,
+script de alta de negocio, y explicación de qué NO cambia al migrar).
+No es algo que Claude Code genere automáticamente durante `/build-agent`
+— es una migración deliberada que se hace cuando el volumen de clientes
+lo justifica, no antes.
