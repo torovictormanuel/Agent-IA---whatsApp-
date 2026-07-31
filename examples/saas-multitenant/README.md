@@ -154,11 +154,27 @@ de mensajería — lo único que vas a pagar es la API de Claude:
    para que la configure como Callback URL en su app de Meta.
 
 4. **Claude API:** no tiene tier gratuito de producción. Si el proyecto es
-   una startup real, aplicá al [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms)
-   para créditos (no toma equity, expiran a los 12 meses). Mientras tanto,
-   usá `ANTHROPIC_MODEL=claude-haiku-4-5-20251001` para desarrollo/testing
-   y reservá Sonnet (el default) para tráfico real de clientes — ver
-   `.env.example`.
+   una startup real con financiamiento institucional, aplicá al
+   [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms)
+   para créditos (no toma equity, expiran a los 12 meses) — si no calificás
+   todavía, mirá el punto 4bis. Mientras tanto, usá
+   `ANTHROPIC_MODEL=claude-haiku-4-5-20251001` para desarrollo/testing y
+   reservá Sonnet (el default) para tráfico real de clientes.
+
+4bis. **Probar gratis sin startup fondeada — AWS Bedrock:** cuentas de AWS
+   nuevas (creadas después de julio 2025) reciben $200 de crédito que cubren
+   Bedrock, donde corren los mismos modelos Claude. Sin aplicar a ningún
+   programa: seteá en `.env`
+   ```
+   LLM_PROVIDER=bedrock
+   AWS_ACCESS_KEY_ID=...
+   AWS_SECRET_ACCESS_KEY=...
+   AWS_REGION=us-east-1
+   ANTHROPIC_MODEL=us.anthropic.claude-haiku-4-5-...-v1:0   # inference profile ID de tu consola Bedrock
+   ```
+   Antes hay que habilitar el modelo en la consola AWS: Bedrock → Model
+   access → Anthropic → Request access (instantáneo). El código de
+   `agent/brain.py` es el mismo — solo cambia quién factura la llamada.
 
 5. **Meta App Review**: si vas a dar de alta varios clientes con Meta, en
    algún momento te conviene el programa "Tech Provider" de Meta en vez de

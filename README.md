@@ -367,7 +367,7 @@ No. Claude Code escribe todo el codigo por ti. Tu solo respondes preguntas.
 
 **Cuanto cuesta?**
 - AgentKit es gratis y open source
-- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot). Sin tier gratis de produccion, pero hay $5 de credito de bienvenida y, si es un proyecto real, el [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms) da creditos (no toma equity)
+- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot). Sin tier gratis de produccion, pero hay $5 de credito de bienvenida, el [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms) para startups con financiamiento (no toma equity), y sin eso: `LLM_PROVIDER=bedrock` en tu `.env` corre el mismo Claude via AWS Bedrock, cubierto por los $200 de credito que AWS regala a cuentas nuevas
 - WhatsApp: con Meta Cloud API directo, las conversaciones iniciadas por el cliente son gratis e ilimitadas — puede ser $0. Twilio tiene sandbox gratis para probar, pero cobra por mensaje en produccion
 - Hosting: Railway ya no tiene tier gratis real. Alternativas gratis: Vercel (Hobby, solo uso no comercial), Koyeb o Render — ver `examples/saas-multitenant/README.md` para el detalle
 
