@@ -193,8 +193,8 @@ claude
 
 | Proveedor | Dificultad | Costo | Mejor para |
 |-----------|-----------|-------|------------|
-| [Twilio](https://twilio.com) | Media | Sandbox gratis / Pago por mensaje | Empezar rapido, probar, empresas |
-| [Meta Cloud API](https://developers.facebook.com) | Media | Gratis (ver nota) | Produccion seria |
+| [Meta Cloud API](https://developers.facebook.com) | Media | Gratis (ver nota) | Produccion seria, recomendado |
+| [Twilio](https://twilio.com) | Media | Sandbox gratis / Pago por mensaje | Probar rapido sin verificar Business |
 
 **Si solo quieres probar rapido**, Twilio tiene sandbox gratis y no requiere verificacion.
 
@@ -225,19 +225,19 @@ Claude Code te guia desde ahi. Solo responde las preguntas.
 
 AgentKit soporta 2 proveedores. Tu eliges cual usar durante el setup.
 
-### Twilio (recomendado para empezar)
+### Meta Cloud API (recomendado)
+- Configura en [developers.facebook.com](https://developers.facebook.com)
+- Es la API oficial de WhatsApp (de Meta/Facebook)
+- Necesitas: **Access Token** + **Phone Number ID** + **Verify Token** + **App Secret**
+- Requiere cuenta de Facebook Business verificada
+- Conversaciones iniciadas por el cliente: gratis e ilimitadas — el costo de mensajeria en produccion puede ser $0
+
+### Twilio (mas rapido para probar)
 - Registrate en [twilio.com](https://twilio.com)
-- Sandbox gratuito sin verificacion (ideal para probar)
+- Sandbox gratuito sin verificacion (ideal para probar sin verificar un Business de Meta)
 - Muy confiable, excelente documentacion
 - Necesitas: **Account SID** + **Auth Token** + **Phone Number**
 - Pago por mensaje en produccion
-
-### Meta Cloud API (oficial)
-- Configura en [developers.facebook.com](https://developers.facebook.com)
-- Es la API oficial de WhatsApp (de Meta/Facebook)
-- Necesitas: **Access Token** + **Phone Number ID** + **Verify Token**
-- Requiere cuenta de Facebook Business verificada
-- Gratis por conversacion (pagas solo por conversaciones iniciadas por ti)
 
 ---
 
@@ -367,7 +367,7 @@ No. Claude Code escribe todo el codigo por ti. Tu solo respondes preguntas.
 
 **Cuanto cuesta?**
 - AgentKit es gratis y open source
-- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot). Sin tier gratis de produccion, pero hay $5 de credito de bienvenida, el [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms) para startups con financiamiento (no toma equity), y sin eso: `LLM_PROVIDER=bedrock` en tu `.env` corre el mismo Claude via AWS Bedrock, cubierto por los $200 de credito que AWS regala a cuentas nuevas
+- Claude API: pagas por uso (~$3/millon de tokens, muy barato para un bot). Sin tier gratis de produccion, pero hay $5 de credito de bienvenida y, si el proyecto tiene financiamiento institucional, el [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms) da creditos (no toma equity)
 - WhatsApp: con Meta Cloud API directo, las conversaciones iniciadas por el cliente son gratis e ilimitadas — puede ser $0. Twilio tiene sandbox gratis para probar, pero cobra por mensaje en produccion
 - Hosting: Railway ya no tiene tier gratis real. Alternativas gratis: Vercel (Hobby, solo uso no comercial), Koyeb o Render — ver `examples/saas-multitenant/README.md` para el detalle
 

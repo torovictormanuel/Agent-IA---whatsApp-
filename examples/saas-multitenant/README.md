@@ -83,14 +83,17 @@ python scripts/alta_negocio.py \
   --vertical inmobiliaria \
   --prompt-file ../inmobiliaria/config/prompts.yaml \
   --propiedades ../inmobiliaria/config/propiedades.yaml \
-  --provider twilio \
-  --twilio-sid ACxxxxxxxx \
-  --twilio-token xxxxxxxx \
-  --twilio-numero "+14155238886"
+  --provider meta \
+  --meta-token EAAxxxxx \
+  --meta-phone-id 1234567890 \
+  --meta-verify-token "algo-secreto" \
+  --meta-app-secret "xxxxxxxx"
 ```
 
-(las credenciales de Twilio pueden ser cualquier placeholder para probar
-solo `test_local.py`, que no llega a llamar `enviar_mensaje`)
+(las credenciales pueden ser cualquier placeholder para probar solo
+`test_local.py`, que no llega a llamar `enviar_mensaje`. Si preferís
+Twilio para el sandbox de prueba, `--provider twilio --twilio-sid ...
+--twilio-token ... --twilio-numero ...` funciona igual.)
 
 Probar el chat:
 
@@ -156,25 +159,9 @@ de mensajería — lo único que vas a pagar es la API de Claude:
 4. **Claude API:** no tiene tier gratuito de producción. Si el proyecto es
    una startup real con financiamiento institucional, aplicá al
    [Anthropic Startup Program](https://www.anthropic.com/startup-program-official-terms)
-   para créditos (no toma equity, expiran a los 12 meses) — si no calificás
-   todavía, mirá el punto 4bis. Mientras tanto, usá
-   `ANTHROPIC_MODEL=claude-haiku-4-5-20251001` para desarrollo/testing y
-   reservá Sonnet (el default) para tráfico real de clientes.
-
-4bis. **Probar gratis sin startup fondeada — AWS Bedrock:** cuentas de AWS
-   nuevas (creadas después de julio 2025) reciben $200 de crédito que cubren
-   Bedrock, donde corren los mismos modelos Claude. Sin aplicar a ningún
-   programa: seteá en `.env`
-   ```
-   LLM_PROVIDER=bedrock
-   AWS_ACCESS_KEY_ID=...
-   AWS_SECRET_ACCESS_KEY=...
-   AWS_REGION=us-east-1
-   ANTHROPIC_MODEL=us.anthropic.claude-haiku-4-5-...-v1:0   # inference profile ID de tu consola Bedrock
-   ```
-   Antes hay que habilitar el modelo en la consola AWS: Bedrock → Model
-   access → Anthropic → Request access (instantáneo). El código de
-   `agent/brain.py` es el mismo — solo cambia quién factura la llamada.
+   para créditos (no toma equity, expiran a los 12 meses). Mientras tanto,
+   usá `ANTHROPIC_MODEL=claude-haiku-4-5-20251001` para desarrollo/testing
+   y reservá Sonnet (el default) para tráfico real de clientes.
 
 5. **Meta App Review**: si vas a dar de alta varios clientes con Meta, en
    algún momento te conviene el programa "Tech Provider" de Meta en vez de

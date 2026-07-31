@@ -45,28 +45,6 @@ Me interesa, me llamo Ana y ando buscando algo en Palermo hasta 200 mil dolares
 Quiero hablar con alguien para negociar el precio
 ```
 
-## Probar gratis con AWS Bedrock (en vez de gastar crédito de Anthropic)
-
-Si tu cuenta de AWS es nueva (creada después de julio 2025), AWS te da $200
-de crédito que cubren Bedrock — podés probar el agente completo con Claude
-real sin tocar tu crédito de la cuenta de Anthropic:
-
-```bash
-# En .env:
-LLM_PROVIDER=bedrock
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
-ANTHROPIC_MODEL=us.anthropic.claude-haiku-4-5-...-v1:0   # copiado de tu consola de Bedrock
-```
-
-Pasos: cuenta en [aws.amazon.com/free](https://aws.amazon.com/free) → en la
-consola, Bedrock → Model access → habilitar Anthropic → copiar el
-"inference profile ID" exacto desde Model catalog (ese ID cambia por
-región, no es el mismo string que `claude-sonnet-5`). El resto del código
-no cambia — `agent/brain.py` detecta `LLM_PROVIDER` y arma el cliente que
-corresponda.
-
 ## Conectar a WhatsApp real
 
 1. Completa el resto de `.env` (`WHATSAPP_PROVIDER`, credenciales del

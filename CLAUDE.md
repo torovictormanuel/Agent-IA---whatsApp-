@@ -238,12 +238,14 @@ PREGUNTA 8: ¿Tienes tu Anthropic API Key?
                      5. La key empieza con "sk-ant-..."
 
 PREGUNTA 9: ¿Qué servicio de WhatsApp quieres usar para conectar tu agente?
-            1. Twilio (RECOMENDADO para empezar) — Sandbox gratis sin verificación,
-               muy confiable, buena documentación. Pago por mensaje en producción.
-            2. Meta Cloud API — La API oficial de WhatsApp. Gratis por conversación, pero
-               requiere cuenta de Facebook Business verificada.
+            1. Meta Cloud API (RECOMENDADO) — La API oficial de WhatsApp. Las conversaciones
+               iniciadas por el cliente son gratis e ilimitadas, ideal para producción.
+               Requiere cuenta de Facebook Business verificada.
+            2. Twilio — Sandbox gratis sin verificación, muy confiable, buena documentación.
+               Pago por mensaje en producción.
 
-            Si solo quieres probar, Twilio es lo más rápido (sandbox gratis sin verificación).
+            Si solo quieres probar rápido sin verificar un Business, Twilio es más directo
+            para el sandbox inicial. Para quedarte en producción, Meta sale más barato.
 
 PREGUNTA 10: [Depende de la respuesta de PREGUNTA 9]
 
@@ -800,6 +802,7 @@ import os
 import json
 import yaml
 import logging
+from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 
 from agent.tools import TOOLS, EJECUTAR_TOOL
@@ -807,37 +810,12 @@ from agent.tools import TOOLS, EJECUTAR_TOOL
 load_dotenv()
 logger = logging.getLogger("agentkit")
 
-# LLM_PROVIDER=anthropic (default) llama directo a la API de Anthropic.
-# LLM_PROVIDER=bedrock llama al mismo Claude pero vía AWS Bedrock — útil
-# para probar gratis con los $200 de crédito que AWS da a cuentas nuevas
-# (cubre Bedrock), sin depender de crédito de la cuenta de Anthropic.
-# El código de tool-calling de más abajo es IDÉNTICO en los dos casos —
-# solo cambia quién factura la llamada.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-if LLM_PROVIDER == "bedrock":
-    from anthropic import AsyncAnthropicBedrock
-    # Usa la cadena de credenciales estándar de AWS (env vars
-    # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, o un perfil configurado) —
-    # igual que boto3, no hace falta pasarlas a mano acá.
-    client = AsyncAnthropicBedrock(aws_region=os.getenv("AWS_REGION", "us-east-1"))
-    # En Bedrock el nombre del modelo NO es "claude-sonnet-5" — es el ID de
-    # inference profile que se copia del catálogo de modelos en la consola
-    # de Bedrock (algo como "us.anthropic.claude-sonnet-5-...-v1:0"). No se
-    # hardcodea porque cambia por región y por versión habilitada.
-    MODELO = os.getenv("ANTHROPIC_MODEL")
-    if not MODELO:
-        raise ValueError(
-            "LLM_PROVIDER=bedrock requiere ANTHROPIC_MODEL con el inference "
-            "profile ID exacto de la consola de Bedrock (Model catalog)."
-        )
-else:
-    from anthropic import AsyncAnthropic
-    client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    # Configurable para no quemar crédito de producción durante desarrollo:
-    # en local/testing conviene ANTHROPIC_MODEL=claude-haiku-4-5-20251001
-    # (mucho más barato) y reservar Sonnet para tráfico real de clientes.
-    MODELO = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+# Configurable para no quemar crédito de producción durante desarrollo:
+# en local/testing conviene ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+# (mucho más barato) y reservar Sonnet para tráfico real de clientes.
+MODELO = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 MAX_TURNOS_TOOL = 5  # límite de idas y vueltas modelo <-> herramientas por mensaje
 
